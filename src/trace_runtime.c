@@ -125,6 +125,7 @@ int trace_program(char *const argv[],
     pid_t child;
     int status = 0;
     int entering = 1;
+    printf("A origem do trace\n");
 
     if (argv == NULL || argv[0] == NULL) {
         fprintf(stderr, "erro: programa alvo ausente\n");

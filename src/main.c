@@ -36,15 +36,18 @@ int main(int argc, char **argv)
     struct trace_options opts;
     struct trace_state state = {0};
     int rc;
+    printf("Print no main é para funcionar \n");
 
     rc = parse_args(argc, argv, &opts);
     if (rc > 0) {
+        printf("Teste 1\n");
         return 0;
     }
     if (rc < 0) {
+        printf("Teste 2\n");
         return 2;
     }
-
+    printf("Ele não deu falha\n");
     state.raw_events = opts.raw_events;
     rc = trace_program(opts.target_argv, trace_observer, &state);
     return rc < 0 ? 1 : rc;
