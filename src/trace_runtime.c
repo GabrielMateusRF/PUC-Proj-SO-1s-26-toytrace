@@ -52,6 +52,24 @@ static pid_t launch_tracee(char *const argv[])
      *
      * Em erro, imprima uma mensagem com perror() e retorne -1.
      */
+    pid_t pid = fork();
+    if (pid == 0){
+        
+        //https://blogs.oracle.com/linux/tracing-the-ptrace
+        //Deixa o pai seguir ele, talvez falte algo para implementar corretamente
+        ptrace(PTRACE_TRACEME, 0, NULL, NULL);
+        //interrompe processamento do filho
+        raise(SIGSTOP);
+        execvp(argv[0], argv);
+
+        
+
+    }
+    if (pid > 0){
+        //pai
+        return pid;
+    }
+
     fprintf(stderr, "erro: TODO Semana 2: implementar launch_tracee()\n");
     return -1;
 }
@@ -66,6 +84,12 @@ static int wait_for_initial_stop(pid_t child)
      *
      * Retorne 0 se o filho parou como esperado, -1 em erro.
      */
+
+    int status;
+    ///se deu certo ele retorna o numero da child
+    if(waitpid(child, &status, 0) > 0){
+        return 0;
+    } 
     fprintf(stderr, "erro: TODO Semana 2: implementar wait_for_initial_stop()\n");
     return -1;
 }
