@@ -37,7 +37,7 @@ static void fill_event_from_regs(pid_t pid,
 static pid_t launch_tracee(char *const argv[])
 {
     /*
-     * TODO Semana 2:
+     * TODO Semana 2: feito
      *
      * Crie o processo monitorado.
      *
@@ -85,9 +85,8 @@ static int wait_for_initial_stop(pid_t child)
      * Retorne 0 se o filho parou como esperado, -1 em erro.
      */
 
-    int status;
     ///se deu certo ele retorna o numero da child
-    if(waitpid(child, &status, 0) > 0){
+    if(waitpid(child, NULL, 0) > 0){
         return 0;
     } 
     fprintf(stderr, "erro: TODO Semana 2: implementar wait_for_initial_stop()\n");
@@ -97,11 +96,15 @@ static int wait_for_initial_stop(pid_t child)
 static int configure_trace_options(pid_t child)
 {
     /*
-     * TODO Semana 3:
+     * TODO Semana 3: feito?
      *
      * Configure PTRACE_O_TRACESYSGOOD com PTRACE_SETOPTIONS.
      * Isso ajuda a diferenciar paradas de syscall de outros sinais.
      */
+    if(ptrace(PTRACE_SETOPTIONS, child, NULL, PTRACE_O_TRACESYSGOOD) == 0){
+        
+        return 0;
+    }
     fprintf(stderr, "erro: TODO Semana 3: implementar configure_trace_options()\n");
     return -1;
 }
@@ -109,13 +112,17 @@ static int configure_trace_options(pid_t child)
 static int resume_until_next_syscall(pid_t child, int signal_to_deliver)
 {
     /*
-     * TODO Semana 3:
+     * TODO Semana 3: feito
      *
      * Use ptrace(PTRACE_SYSCALL, ...) para deixar o filho executar ate a
      * proxima entrada ou saida de syscall.
      *
      * signal_to_deliver deve ser repassado como quarto argumento do ptrace.
      */
+
+    if(ptrace(PTRACE_SYSCALL, child, NULL, signal_to_deliver) == 0) {
+        return 0;   
+    }
     fprintf(stderr, "erro: TODO Semana 3: implementar resume_until_next_syscall()\n");
     return -1;
 }
@@ -123,7 +130,7 @@ static int resume_until_next_syscall(pid_t child, int signal_to_deliver)
 static int wait_for_syscall_stop(pid_t child, int *status)
 {
     /*
-     * TODO Semana 3:
+     * TODO Semana 3: feto? tem o problema que ele PRECISA retornar algo
      *
      * Espere o filho com waitpid().
      *
@@ -138,8 +145,29 @@ static int wait_for_syscall_stop(pid_t child, int *status)
      * - com PTRACE_O_TRACESYSGOOD, syscall-stops aparecem com bit 0x80.
      * - paradas SIGTRAP comuns nao devem ser entregues de volta ao filho.
      */
+    ///se deu certo ele retorna o numero da child
+    if(waitpid(child, status, 0) > 0){
+        
+    
+         if (WIFEXITED(*status) || WIFSIGNALED(*status)){
+            printf("\nEntrei no CASO QUE ELE ACABOU\n");
+            return 0;
+        }
+        //caso o programa pare por syscall
+        //NOTA NA PAGINA 5 DO DOCUMENTO ELE RECOMENDA ALGO
+        if (WIFSTOPPED(*status)){
+            printf("\n Valor STATUS %d\n", *status);
+            if((WSTOPSIG(*status) & 0x80)){
+                printf("\nEntrei no CASO QUE ELE PAROU por syscall\n");
+                return 1;
+            }
+            //se eu NÃO retornar nada o programa morre
+            return 0;
+        }
+    }
     fprintf(stderr, "erro: TODO Semana 3: implementar wait_for_syscall_stop()\n");
     return -1;
+
 }
 
 int trace_program(char *const argv[],
