@@ -253,7 +253,7 @@ int trace_program(char *const argv[],
         }
 
         /*
-         * TODO Semana 4:
+         * TODO Semana 4: feito
          *
          * Use PTRACE_GETREGS para preencher regs.
          * Depois chame fill_event_from_regs() e observer().
