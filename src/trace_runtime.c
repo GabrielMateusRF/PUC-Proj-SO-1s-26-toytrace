@@ -53,15 +53,18 @@ static pid_t launch_tracee(char *const argv[])
      * Em erro, imprima uma mensagem com perror() e retorne -1.
      */
     pid_t pid = fork();
+    printf("\nCRIAÇÃO DE FILHO\n");
     if (pid == 0){
         
         //https://blogs.oracle.com/linux/tracing-the-ptrace
         //Deixa o pai seguir ele, talvez falte algo para implementar corretamente
         ptrace(PTRACE_TRACEME, 0, NULL, NULL);
+        printf("\nTESTE ENTREI NO FILHO\n");
+
         //interrompe processamento do filho
         raise(SIGSTOP);
         execvp(argv[0], argv);
-
+        return 0;
         
 
     }
@@ -162,7 +165,8 @@ static int wait_for_syscall_stop(pid_t child, int *status)
                 return 1;
             }
             //se eu NÃO retornar nada o programa morre
-            return 0;
+            printf("\n FUI PARADO POR SIGTRAP\n");
+            return 1;
         }
     }
     fprintf(stderr, "erro: TODO Semana 3: implementar wait_for_syscall_stop()\n");
