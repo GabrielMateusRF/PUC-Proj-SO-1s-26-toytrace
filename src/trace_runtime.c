@@ -53,27 +53,30 @@ static pid_t launch_tracee(char *const argv[])
      * Em erro, imprima uma mensagem com perror() e retorne -1.
      */
     pid_t pid = fork();
-    printf("\nCRIAÇÃO DE FILHO\n");
-    if (pid == 0){
-        
-        //https://blogs.oracle.com/linux/tracing-the-ptrace
-        //Deixa o pai seguir ele, talvez falte algo para implementar corretamente
-        ptrace(PTRACE_TRACEME, 0, NULL, NULL);
-        printf("\nTESTE ENTREI NO FILHO\n");
+    if (pid == 0) {
+        // O filho avisa ao kernel que sera monitorado pelo pai.
+        if (ptrace(PTRACE_TRACEME, 0, NULL, NULL) < 0) {
+            perror("ptrace");
+            _exit(1);
+        }
 
-        //interrompe processamento do filho
-        raise(SIGSTOP);
+        // Para antes do execvp para o pai configurar o tracing.
+        if (raise(SIGSTOP) != 0) {
+            perror("raise");
+            _exit(1);
+        }
+
+        // Troca o processo filho pelo programa alvo.
         execvp(argv[0], argv);
-        return 0;
-        
-
+        perror("execvp");
+        _exit(1);
     }
-    if (pid > 0){
-        //pai
+    if (pid > 0) {
+        // O pai continua o runtime e usa esse pid para controlar o filho.
         return pid;
     }
 
-    fprintf(stderr, "erro: TODO Semana 2: implementar launch_tracee()\n");
+    perror("fork");
     return -1;
 }
 
@@ -88,27 +91,37 @@ static int wait_for_initial_stop(pid_t child)
      * Retorne 0 se o filho parou como esperado, -1 em erro.
      */
 
-    ///se deu certo ele retorna o numero da child
-    if(waitpid(child, NULL, 0) > 0){
+    int status;
+
+    // Espera a parada inicial causada pelo raise(SIGSTOP) no filho.
+    if (waitpid(child, &status, 0) < 0) {
+        perror("waitpid");
+        return -1;
+    }
+
+    // Confirma que o filho realmente parou antes de configurar o ptrace.
+    if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGSTOP) {
         return 0;
-    } 
-    fprintf(stderr, "erro: TODO Semana 2: implementar wait_for_initial_stop()\n");
+    }
+
+    fprintf(stderr, "erro: parada inicial inesperada do processo filho\n");
     return -1;
 }
 
 static int configure_trace_options(pid_t child)
 {
     /*
-     * TODO Semana 3: feito?
+     * TODO Semana 3: feito
      *
      * Configure PTRACE_O_TRACESYSGOOD com PTRACE_SETOPTIONS.
      * Isso ajuda a diferenciar paradas de syscall de outros sinais.
      */
-    if(ptrace(PTRACE_SETOPTIONS, child, NULL, PTRACE_O_TRACESYSGOOD) == 0){
-        
+    // Marca paradas de syscall com SIGTRAP | 0x80 para diferenciar de SIGTRAP comum.
+    if (ptrace(PTRACE_SETOPTIONS, child, NULL, PTRACE_O_TRACESYSGOOD) == 0) {
         return 0;
     }
-    fprintf(stderr, "erro: TODO Semana 3: implementar configure_trace_options()\n");
+
+    perror("ptrace PTRACE_SETOPTIONS");
     return -1;
 }
 
@@ -122,18 +135,18 @@ static int resume_until_next_syscall(pid_t child, int signal_to_deliver)
      *
      * signal_to_deliver deve ser repassado como quarto argumento do ptrace.
      */
-
-    if(ptrace(PTRACE_SYSCALL, child, NULL, signal_to_deliver) == 0) {
-        return 0;   
+    // Manda o filho continuar ate a proxima entrada ou saida de syscall.
+    if (ptrace(PTRACE_SYSCALL, child, NULL, signal_to_deliver) == 0) {
+        return 0;
     }
-    fprintf(stderr, "erro: TODO Semana 3: implementar resume_until_next_syscall()\n");
+    perror("ptrace PTRACE_SYSCALL");
     return -1;
 }
 
 static int wait_for_syscall_stop(pid_t child, int *status)
 {
     /*
-     * TODO Semana 3: feto? tem o problema que ele PRECISA retornar algo
+     * TODO Semana 3: feito
      *
      * Espere o filho com waitpid().
      *
@@ -148,30 +161,45 @@ static int wait_for_syscall_stop(pid_t child, int *status)
      * - com PTRACE_O_TRACESYSGOOD, syscall-stops aparecem com bit 0x80.
      * - paradas SIGTRAP comuns nao devem ser entregues de volta ao filho.
      */
-    ///se deu certo ele retorna o numero da child
-    if(waitpid(child, status, 0) > 0){
-        
-    
-         if (WIFEXITED(*status) || WIFSIGNALED(*status)){
-            printf("\nEntrei no CASO QUE ELE ACABOU\n");
+    while (1) {
+        int sig;
+
+        if (waitpid(child, status, 0) < 0) {
+            perror("waitpid");
+            return -1;
+        }
+
+        if (WIFEXITED(*status) || WIFSIGNALED(*status)) {
             return 0;
         }
-        //caso o programa pare por syscall
-        //NOTA NA PAGINA 5 DO DOCUMENTO ELE RECOMENDA ALGO
-        if (WIFSTOPPED(*status)){
-            printf("\n Valor STATUS %d\n", *status);
-            if((WSTOPSIG(*status) & 0x80)){
-                printf("\nEntrei no CASO QUE ELE PAROU por syscall\n");
-                return 1;
-            }
-            //se eu NÃO retornar nada o programa morre
-            printf("\n FUI PARADO POR SIGTRAP\n");
+
+        if (!WIFSTOPPED(*status)) {
+            fprintf(stderr, "erro: status inesperado do processo filho\n");
+            return -1;
+        }
+
+        sig = WSTOPSIG(*status);
+
+        // Com PTRACE_O_TRACESYSGOOD, syscall-stop aparece como SIGTRAP | 0x80 (ver configure_trace_options)
+        if (sig == (SIGTRAP | 0x80)) {
             return 1;
         }
-    }
-    fprintf(stderr, "erro: TODO Semana 3: implementar wait_for_syscall_stop()\n");
-    return -1;
 
+        // Problema corrigido: SIGTRAP comum nao é parada de syscall
+        // Se retornar 1 aqui, o runtime cria evento falso e alterna entering errado
+        // Por isso o filho continua sem entregar esse SIGTRAP
+        if (sig == SIGTRAP) {
+            if (resume_until_next_syscall(child, 0) < 0) {
+                return -1;
+            }
+            continue;
+        }
+
+        // Outros sinais devem ser repassados ao filho quando ele continuar.
+        if (resume_until_next_syscall(child, sig) < 0) {
+            return -1;
+        }
+    }
 }
 
 int trace_program(char *const argv[],
@@ -231,6 +259,11 @@ int trace_program(char *const argv[],
          * Depois chame fill_event_from_regs() e observer().
          */
         memset(&regs, 0, sizeof(regs));
+        if (ptrace(PTRACE_GETREGS, child, NULL, &regs) < 0) {
+            perror("ptrace PTRACE_GETREGS");
+            return -1;
+        }
+
         fill_event_from_regs(child, entering, &regs, &ev);
         if (observer != NULL) {
             observer(&ev, userdata);
@@ -243,3 +276,4 @@ int trace_program(char *const argv[],
         }
     }
 }
+
