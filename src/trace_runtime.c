@@ -30,9 +30,9 @@ static void fill_event_from_regs(pid_t pid,
      * - ev->entering deve copiar o parametro entering.
      */
 
-     //Para os registradores achei isso https://wiki.osdev.org/CPU_Registers_x86-64
-     //nesse documento não tem NADA sobre o rax e orig_Rax, mas como
-     //o prof colocou como dica por agora bora só rolar 
+     //Para os registradores tem isso https://wiki.osdev.org/CPU_Registers_x86-64
+     //usei para testes o ./toytrace trace --raw-events -- ./tests/targets/hello_write
+     //Ja que ele pede para ver os eventos crus na semana 4
     memset(ev, 0, sizeof(*ev));
     ev->pid = pid;
     ev->entering = entering;

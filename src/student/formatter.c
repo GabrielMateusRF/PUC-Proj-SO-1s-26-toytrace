@@ -1,8 +1,9 @@
 #include "student_api.h"
-
 #include "syscall_names.h"
-
 #include <stdio.h>
+#include <sys/syscall.h>
+#include "trace_helpers.h"
+#include <string.h>
 
 void student_debug_raw_event(const struct syscall_event *ev,
                              char *buf,
@@ -28,11 +29,23 @@ void student_debug_raw_event(const struct syscall_event *ev,
      *
      * A pergunta importante da Semana 4 e:
      * por que a mesma syscall aparece duas vezes?
+     // RESPOSTA: A mesma syscall aparece duas vezes porque ha um 
+     // PTRACE_SYSCALL para o processo em dois momentos, uma vez na entrada da syscall
+     // antes de ela executar, e outra vez na saída, depois que ela termina.
      */
-    snprintf(buf, bufsz, "pid=%d %s %s",
+    if (ev->entering) {
+        snprintf(buf, bufsz, "pid=%d %s entrada",
+                 ev->pid,
+                 syscall_name(ev->syscall_no));
+        return;
+    }
+
+    // O retorno so e valido na saida da syscall.
+    // Melhoria no debuger para poder ver melhor o retorno das sysacalls
+    snprintf(buf, bufsz, "pid=%d %s saida ret=%ld",
              ev->pid,
              syscall_name(ev->syscall_no),
-             ev->entering ? "entrada" : "saida");
+             ev->ret);
 }
 
 void student_format_event(const struct syscall_event *ev,
@@ -40,7 +53,7 @@ void student_format_event(const struct syscall_event *ev,
                           size_t bufsz)
 {
     /*
-     * TODO Semana 5:
+     * TODO Semana 5: quase pronto, falta execve e exit_group
      *
      * Primeiro, formate uma syscall completa em uma linha simples.
      *
@@ -54,6 +67,57 @@ void student_format_event(const struct syscall_event *ev,
      * Para caminhos do processo monitorado, use read_child_string().
      * Se a leitura falhar, imprima "<ilegivel>".
      */
+    // read usa apenas fd, endereco do buffer e quantidade solicitada.
+    if (ev->syscall_no == SYS_read) {
+        snprintf(buf, bufsz, "read(%lu, %#lx, %lu) = %ld",
+                 ev->args[0],
+                 ev->args[1],
+                 ev->args[2],
+                 ev->ret);
+        return;
+    }
+
+    // write tem a mesma assinatura basica de read.
+    if (ev->syscall_no == SYS_write) {
+        snprintf(buf, bufsz, "write(%lu, %#lx, %lu) = %ld",
+                 ev->args[0],
+                 ev->args[1],
+                 ev->args[2],
+                 ev->ret);
+        return;
+    }
+
+    // Em openat, args[1] nao e a string em si: e o endereco do caminho no filho.
+    if (ev->syscall_no == SYS_openat) {
+        char path[256];
+
+        // Le o caminho da memoria do processo monitorado para imprimir algo legivel.
+        if (read_child_string(ev->pid, ev->args[1], path, sizeof(path)) < 0) {
+            strncpy(path, "<ilegivel>", sizeof(path));
+        }
+
+        // dirfd pode ser negativo, como AT_FDCWD, por isso deve ser impresso como signed.
+        snprintf(buf, bufsz, "openat(%ld, \"%s\", %#lx, %#lx) = %ld",
+                 (long)ev->args[0],
+                 path,
+                 ev->args[2],
+                 ev->args[3],
+                 ev->ret);
+        return;
+    }
+
+    // Em execve, args[0] aponta para o caminho do executavel no processo filho
+    // args[1] e args[2] sao vetores de strings (argv e envp)
+    //if(ev->syscall_no == SYS_execve) {
+    //  
+    //}
+
+    // exit_group encerra o processo e so precisa mostrar o status em args[0].
+    //if(ev->syscall_no == SYS_exit_group) {
+    //  
+    //}
+
+    // Syscalls sem caso especial continuam usando os seis argumentos crus.
     snprintf(buf, bufsz, "%s(%#lx, %#lx, %#lx, %#lx, %#lx, %#lx) = %ld",
              syscall_name(ev->syscall_no),
              ev->args[0],
