@@ -108,14 +108,31 @@ void student_format_event(const struct syscall_event *ev,
 
     // Em execve, args[0] aponta para o caminho do executavel no processo filho
     // args[1] e args[2] sao vetores de strings (argv e envp)
-    //if(ev->syscall_no == SYS_execve) {
-    //  
-    //}
+    if(ev->syscall_no == SYS_execve) {
+        char path[256];
+        if (read_child_string(ev->pid, ev->args[0], path, sizeof(path)) < 0) {
+            strncpy(path, "<ilegivel>", sizeof(path));
+        }
+        snprintf(buf, bufsz, "execve(\"%s\", ...) = %ld",
+                path,
+                ev->ret);
+        return;
+        
+    }
 
-    // exit_group encerra o processo e so precisa mostrar o status em args[0].
-    //if(ev->syscall_no == SYS_exit_group) {
-    //  
-    //}
+    // exit_group encerra o processo e so precisa mostrar o status em args[0]. feito
+    if(ev->syscall_no == SYS_exit_group) {
+        snprintf(buf, bufsz, "exit_group(%ld) = %ld",
+                (long)ev->args[0],
+                ev->ret);
+        return;
+    }
+    //tentei deixar no padrão dos outros
+    //exit group parece chatinho https://man7.org/linux/man-pages/man2/exit_group.2.html
+    //não tenho 100% de certeza se essa implementação está certa, mas funciona
+
+
+
 
     // Syscalls sem caso especial continuam usando os seis argumentos crus.
     snprintf(buf, bufsz, "%s(%#lx, %#lx, %#lx, %#lx, %#lx, %#lx) = %ld",
