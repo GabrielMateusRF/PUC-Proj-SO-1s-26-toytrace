@@ -53,7 +53,7 @@ void student_format_event(const struct syscall_event *ev,
                           size_t bufsz)
 {
     /*
-     * TODO Semana 5: quase pronto, falta execve e exit_group
+     * TODO Semana 5: Feito
      *
      * Primeiro, formate uma syscall completa em uma linha simples.
      *
@@ -87,18 +87,22 @@ void student_format_event(const struct syscall_event *ev,
         return;
     }
 
-    // Em openat, args[1] nao e a string em si: e o endereco do caminho no filho.
+    // Em openat, args[1] nao guarda o texto do caminho diretamente.
+    // Ele guarda um endereco dentro da memoria do processo monitorado.
     if (ev->syscall_no == SYS_openat) {
         char path[256];
 
-        // Le o caminho da memoria do processo monitorado para imprimir algo legivel.
+        // O tracer precisa ler esse endereco no filho para recuperar a string.
         if (read_child_string(ev->pid, ev->args[1], path, sizeof(path)) < 0) {
             strncpy(path, "<ilegivel>", sizeof(path));
         }
 
-        // dirfd pode ser negativo, como AT_FDCWD, por isso deve ser impresso como signed.
-        snprintf(buf, bufsz, "openat(%ld, \"%s\", %#lx, %#lx) = %ld",
-                 (long)ev->args[0],
+        // dirfd pode representar constantes negativas, como AT_FDCWD (-100)
+        // Como ele chega armazenado em unsigned long, imprimimos como int para
+        // recuperar o valor correto no formato da syscall
+        // (feito o mesmo para SYS_exit_group, que tem um argumento de status que pode ser negativo)
+        snprintf(buf, bufsz, "openat(%d, \"%s\", %#lx, %#lx) = %ld",
+                 (int)ev->args[0],
                  path,
                  ev->args[2],
                  ev->args[3],
@@ -106,33 +110,24 @@ void student_format_event(const struct syscall_event *ev,
         return;
     }
 
-    // Em execve, args[0] aponta para o caminho do executavel no processo filho
-    // args[1] e args[2] sao vetores de strings (argv e envp)
-    if(ev->syscall_no == SYS_execve) {
-        char path[256];
-        if (read_child_string(ev->pid, ev->args[0], path, sizeof(path)) < 0) {
-            strncpy(path, "<ilegivel>", sizeof(path));
-        }
+    // No execve, o path ja foi capturado pelo pairer na entrada da syscall.
+    // Ler args[0] aqui pode falhar, porque apos execve a imagem do processo muda.
+    if (ev->syscall_no == SYS_execve) {
         snprintf(buf, bufsz, "execve(\"%s\", ...) = %ld",
-                path,
-                ev->ret);
+                 ev->has_path ? ev->path : "<ilegivel>",
+                 ev->ret);
         return;
-        
     }
 
     // exit_group encerra o processo e so precisa mostrar o status em args[0]. feito
     if(ev->syscall_no == SYS_exit_group) {
-        snprintf(buf, bufsz, "exit_group(%ld) = %ld",
-                (long)ev->args[0],
+        snprintf(buf, bufsz, "exit_group(%d) = %ld",
+                (int)ev->args[0],
                 ev->ret);
         return;
     }
-    //tentei deixar no padrão dos outros
+    //tentei deixar no padrao dos outros
     //exit group parece chatinho https://man7.org/linux/man-pages/man2/exit_group.2.html
-    //não tenho 100% de certeza se essa implementação está certa, mas funciona
-
-
-
 
     // Syscalls sem caso especial continuam usando os seis argumentos crus.
     snprintf(buf, bufsz, "%s(%#lx, %#lx, %#lx, %#lx, %#lx, %#lx) = %ld",

@@ -9,6 +9,8 @@ struct syscall_event {
     long syscall_no;
     long ret;                  /* valido apenas em eventos de saida */
     unsigned long args[6];     /* argumentos capturados na entrada */
+    int has_path;              /* 1 se path contem uma string valida */
+    char path[256];            /* caminho capturado antes de execve trocar a imagem */
 };
 
 #endif

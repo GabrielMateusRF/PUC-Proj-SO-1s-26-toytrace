@@ -44,6 +44,7 @@ static void fill_event_from_regs(pid_t pid,
     ev->args[3] = regs->r10;
     ev->args[4] = regs->r8;
     ev->args[5] = regs->r9;
+
 }
 
 static pid_t launch_tracee(char *const argv[])
@@ -221,7 +222,6 @@ int trace_program(char *const argv[],
     pid_t child;
     int status = 0;
     int entering = 1;
-    printf("A origem do trace\n");
 
     if (argv == NULL || argv[0] == NULL) {
         fprintf(stderr, "erro: programa alvo ausente\n");
